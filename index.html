@@ -233,11 +233,13 @@ canvas#wc.nw{animation:nwPulse .38s ease infinite}
 }
 .ndot{width:12px;height:12px;border-radius:50%;background:var(--gold);margin-top:-3px;box-shadow:0 0 10px var(--goldg)}
 
-/* ─── Pull area: power meter + spring side by side ─── */
+/* ─── Pull area: spring centered under wheel, power meter beside it ─── */
 .pull-row{
-  display:flex;align-items:flex-end;justify-content:center;
-  gap:20px;margin-top:14px;width:100%;
+  display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:end;justify-items:center;
+  margin-top:14px;width:100%;
 }
+.pull-row .vpm{justify-self:end;margin-left:20px}
 
 /* vertical power meter — segs only */
 .vpm{display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0}
@@ -953,7 +955,7 @@ function drawWheel(angle, angles) {
       });
       wCtx.fillStyle = g;
     } else if (p.empty) {
-      wCtx.fillStyle = isLight() ? '#b0b8c8' : '#1e2230';
+      wCtx.fillStyle = p._flash ? 'rgba(255,92,92,.75)' : (isLight() ? '#b0b8c8' : '#1e2230');
     } else {
       wCtx.fillStyle = i % 2 === 0
         ? (isLight() ? SECTOR_COLORS.goldL : SECTOR_COLORS.gold)
@@ -1031,48 +1033,34 @@ function doRemoveEmpty() {
   const active = PRIZES.filter(p => !p.removed);
   const emptyActiveIdx = active.findIndex(p => p.empty && !p.zeroed);
 
-  // Flash 8× then smoothly shrink to near-zero
+  // Flash the sector 8× (highlight color), then smoothly shrink it to zero
   let flashes = 0;
   function flash() {
     flashes++;
-    const blinkA = [...dispAngles];
-    blinkA[emptyActiveIdx] = flashes % 2 === 0 ? dispAngles[emptyActiveIdx] : 0.0001;
-    drawWheel(wheelAngle, blinkA);
+    PRIZES[emptyIdx]._flash = flashes % 2 === 1;
+    drawWheel(wheelAngle);
     if (flashes < 8) { setTimeout(flash, 90); return; }
+    PRIZES[emptyIdx]._flash = false;
 
-    // Smoothly animate to zero
-    const startAngle = dispAngles[emptyActiveIdx];
-    const dur = 700, t0 = performance.now();
     PRIZES[emptyIdx].zeroed = true;
+    const dur = 700, t0 = performance.now();
 
-    // Redistribute weight: zero the empty, give its weight proportionally to others
-    const otherTotal = active.filter((_, i) => i !== emptyActiveIdx)
-                             .reduce((s, p) => s + (p.special ? specialW : NW), 0);
+    // Snapshot start angles and compute final angles once:
+    // empty → ~0, others expand proportionally so the total stays 2π
+    const startAngles = [...dispAngles];
+    const EPS = 0.0001;
+    const othersTotal = Math.PI * 2 - startAngles[emptyActiveIdx];
+    const finalAngles = startAngles.map((a, i) =>
+      i === emptyActiveIdx ? EPS : a * (Math.PI * 2 - EPS) / othersTotal);
 
     function shrink(now) {
       const p = Math.min((now - t0) / dur, 1);
       const ease = 1 - Math.pow(1 - p, 3); // easeOutCubic
-      const newEmpty = startAngle * (1 - ease);
-
-      // rebuild all angles proportionally, empty → 0, others expand
-      const freed = startAngle * ease; // angle being freed
-      const newAngles = dispAngles.map((a, i) => {
-        if (i === emptyActiveIdx) return newEmpty;
-        // expand proportionally
-        const orig = dispAngles[i];
-        return orig + freed * (orig / (1 - dispAngles[emptyActiveIdx] + 0.0001)) * ease / active.length;
-      });
-      // normalize to exactly 2π
-      const total = newAngles.reduce((s, a) => s + a, 0);
-      dispAngles = newAngles.map(a => a * (Math.PI * 2) / total);
-
+      dispAngles = startAngles.map((a, i) => a + (finalAngles[i] - a) * ease);
       drawWheel(wheelAngle);
       if (p < 1) requestAnimationFrame(shrink);
       else {
-        // Set empty to 0.0001 (invisible) and normalize
-        dispAngles[emptyActiveIdx] = 0.0001;
-        const t2 = dispAngles.reduce((s, a) => s + a, 0);
-        dispAngles = dispAngles.map(a => a * (Math.PI * 2) / t2);
+        dispAngles = [...finalAngles];
         targAngles = [...dispAngles];
         drawWheel(wheelAngle);
         showToast('✅ کمان پوچ حذف شد!');
@@ -1232,73 +1220,76 @@ function _doSpin(dist, vel) {
 }
 
 function physicsAnim(startA, endA, dur, power, winPrize, rotations, ovVar) {
-  const t0 = performance.now(), totalDelta = endA - startA;
+  const t0 = performance.now();
   const ovRad = (C.overshootDeg * Math.PI) / 180 + ovVar;
+  // wheel coasts ovRad past the target during the spin, then springs back onto it
+  const total = (endA + ovRad) - startA;
   const settleDur = 650 + C.overshootDeg * 20;
-  let phase = 'accel', settleT0 = 0, lastSect = -1;
-  let vel = 0, angle = startA, lastTime = t0;
+
+  // Piecewise easing: quadratic spin-up blended into a long quartic-style
+  // coast-down, with velocity matched at the junction so motion never jumps.
+  const P1 = 0.14, EXP = 3.2;
+  const S1 = 1 / (1 + 2 * (1 - P1) / (EXP * P1)); // distance covered during spin-up
+  function spinEase(p) {
+    if (p <= P1) { const q = p / P1; return S1 * q * q; }
+    const q = (p - P1) / (1 - P1);
+    return S1 + (1 - S1) * (1 - Math.pow(1 - q, EXP));
+  }
+  const peakVel = (2 * S1 / P1) * total / dur; // rad/ms at the accel/decel junction
+
+  let phase = 'spin', settleT0 = 0, lastSect = -1;
+  let prevAngle = startA, prevNow = t0;
   let needleAng = 0, needleV = 0, nearWinDone = false;
-  const maxVel = Math.abs(totalDelta) / dur * 1.8;
-  const accelEnd = dur * .1, cruiseEnd = dur * .5;
 
   wc.classList.add('spinning');
 
   function frame(now) {
-    const elapsed = now - t0, dt = Math.min(now - lastTime, 32); lastTime = now;
-    if (phase === 'accel') {
-      const p = elapsed / accelEnd;
-      vel = maxVel * (1 - Math.exp(-5 * p));
-      angle += vel * dt;
-      if (elapsed >= accelEnd) phase = 'cruise';
-    } else if (phase === 'cruise') {
-      vel = maxVel; angle += vel * dt;
-      if (elapsed >= cruiseEnd) phase = 'decel';
-    } else if (phase === 'decel') {
-      const drag = 1 - (1 - C.friction) * 1.4;
-      vel = Math.max(vel * drag - .00005, 0);
-      const wobble = Math.sin(now * .001 * C.wobbleFreq * Math.PI * 2) * C.wobbleAmp * (vel * 500);
-      const bias   = Math.sin(angle * 3) * C.sectorBias * (vel * 500);
-      const drift  = vel < .002 ? Math.sin(now * .022) * vel * C.nearStopDrift * 100 : 0;
-      angle += (vel + drift) * dt + wobble * dt + bias * dt;
-      if (winPrize.special && !nearWinDone && vel < maxVel * .15 && vel > maxVel * .04) {
+    if (phase === 'spin') {
+      const p = Math.min((now - t0) / dur, 1);
+      const angle = startA + total * spinEase(p);
+      const dt = Math.max(now - prevNow, 1);
+      const vel = (angle - prevAngle) / dt;
+      prevAngle = angle; prevNow = now;
+
+      if (winPrize.special && !nearWinDone && vel < peakVel * .15 && vel > peakVel * .04) {
         nearWinDone = true; wc.classList.add('nw'); setTimeout(() => wc.classList.remove('nw'), 800);
       }
-      if (vel < .0005 || (endA - angle <= 0 && elapsed > dur * .4)) {
-        angle = endA; phase = 'settle'; settleT0 = now; requestAnimationFrame(frame); return;
-      }
-    } else if (phase === 'settle') {
-      const p = Math.min((now - settleT0) / settleDur, 1);
-      let disp;
-      if (p < .35) disp = ovRad * (1 - Math.pow(1 - p / .35, 2.8));
-      else { const q = (p - .35) / .65, om = 4.2, z = .58; disp = ovRad * Math.exp(-z * om * q) * Math.cos(om * Math.sqrt(1 - z * z) * q); }
-      angle = endA + disp;
-      const nAcc = -320 * (needleAng - disp * .42) - .75 * needleV;
-      needleV += nAcc * .016; needleAng += needleV * .016;
-      document.getElementById('needle').style.transform = `rotate(${needleAng * (180 / Math.PI)}deg)`;
-      drawWheel(angle); wc.style.filter = 'drop-shadow(0 8px 28px rgba(0,0,0,.6))';
-      wheelAngle = angle;
-      if (p < 1) { requestAnimationFrame(frame); return; }
-      angle = endA; drawWheel(angle); wheelAngle = angle;
-      document.getElementById('needle').style.transform = 'rotate(0deg)';
-      wc.classList.remove('spinning','nw');
-      momentumCarry = Math.min(momentumCarry + .15, .5);
-      setTimeout(() => { momentumCarry = Math.max(momentumCarry - .1, 0); }, 8000);
-      finishSpin(winPrize, power, rotations); return;
-    }
 
-    if (phase !== 'settle') {
+      // needle tick on sector boundaries
       const normA = (((-angle + Math.PI / 2) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
       const sts = getStarts(dispAngles);
       let cs = 0;
       for (let i = 0; i < dispAngles.length; i++) { if (normA >= sts[i] && normA < sts[i] + dispAngles[i]) { cs = i; break; } }
-      if (cs !== lastSect) { lastSect = cs; needleV += Math.min(vel * 8, .3) * (Math.random() > .5 ? 1 : -1); }
+      if (cs !== lastSect) { lastSect = cs; needleV -= Math.min(vel * 9, .35); }
       const nAcc = -300 * needleAng - .7 * needleV; needleV += nAcc * .016; needleAng += needleV * .016;
       document.getElementById('needle').style.transform = `rotate(${needleAng * (180 / Math.PI)}deg)`;
-      const speed = vel * 1000, blur = Math.min(speed / (maxVel * 1000) * 2.5, 2.2);
-      wc.style.filter = speed > 1 ? `drop-shadow(0 8px 28px rgba(0,0,0,.6)) blur(${blur}px)` : 'drop-shadow(0 8px 28px rgba(0,0,0,.6))';
+
+      const blur = Math.min(vel / peakVel * 2.5, 2.2);
+      wc.style.filter = vel * 1000 > 1 ? `drop-shadow(0 8px 28px rgba(0,0,0,.6)) blur(${blur}px)` : 'drop-shadow(0 8px 28px rgba(0,0,0,.6))';
       drawWheel(angle); wheelAngle = angle;
+
+      if (p >= 1) { phase = 'settle'; settleT0 = now; }
+      requestAnimationFrame(frame); return;
     }
-    requestAnimationFrame(frame);
+
+    // settle: damped spring from endA+ovRad back onto endA
+    const q = Math.min((now - settleT0) / settleDur, 1);
+    const om = 4.2, z = .58;
+    const disp = ovRad * Math.exp(-z * om * q) * Math.cos(om * Math.sqrt(1 - z * z) * q);
+    const angle = endA + disp;
+    const nAcc = -320 * (needleAng - disp * .42) - .75 * needleV;
+    needleV += nAcc * .016; needleAng += needleV * .016;
+    document.getElementById('needle').style.transform = `rotate(${needleAng * (180 / Math.PI)}deg)`;
+    wc.style.filter = 'drop-shadow(0 8px 28px rgba(0,0,0,.6))';
+    drawWheel(angle); wheelAngle = angle;
+    if (q < 1) { requestAnimationFrame(frame); return; }
+
+    drawWheel(endA); wheelAngle = endA;
+    document.getElementById('needle').style.transform = 'rotate(0deg)';
+    wc.classList.remove('spinning','nw');
+    momentumCarry = Math.min(momentumCarry + .15, .5);
+    setTimeout(() => { momentumCarry = Math.max(momentumCarry - .1, 0); }, 8000);
+    finishSpin(winPrize, power, rotations);
   }
   requestAnimationFrame(frame);
 }
