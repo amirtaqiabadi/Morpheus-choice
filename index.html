@@ -414,8 +414,20 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
 .sp-val.lose{color:rgba(255,92,92,.7)}
 
 /* card action bar */
-.card-act{display:flex;gap:8px;padding:0 14px 14px;align-items:center}
-.card-act-hint{flex:1;font-size:.72rem;color:var(--tx2);line-height:1.4}
+.card-act{display:flex;flex-direction:column;gap:8px;padding:0 14px 14px}
+.card-act-row{display:flex;gap:8px}
+.card-act-hint{font-size:.72rem;color:var(--tx2);line-height:1.5}
+.card-odds{font-size:.68rem;font-weight:700;color:var(--gold);line-height:1.45}
+.card-wait{grid-column:1 / -1;text-align:center;color:var(--tx2);font-size:.8rem;padding:28px 10px;line-height:1.6}
+.cbox.chosen{border-color:rgba(240,180,41,.75);box-shadow:0 0 0 2px rgba(240,180,41,.35)}
+.cbox.final{border-color:rgba(46,166,255,.85);box-shadow:0 0 0 2px rgba(46,166,255,.4)}
+.cbox.winner{border-color:rgba(77,205,94,.85);box-shadow:0 0 18px rgba(77,205,94,.28)}
+.cbox-badge{
+  position:absolute;top:6px;left:6px;z-index:6;
+  font-size:.55rem;font-weight:800;border-radius:100px;padding:2px 6px;
+  background:rgba(240,180,41,.18);color:var(--gold);
+}
+.cbox.final .cbox-badge{background:rgba(46,166,255,.18);color:var(--blue2)}
 
 /* ═══════════════════════════════
    RESULT SHEET (bottom sheet style)
@@ -649,7 +661,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
           <img class="floating-item" src="cards.png" alt="کارت‌ها">
           <img class="hand-photo" src="hand_left.png" alt="دست چپ">
           <div class="hand-overlay"></div>
-          <button class="hand-btn btn-card" onclick="openCardSheet()">انتخاب کارت</button>
+          <button class="hand-btn btn-card" onclick="openCardSheet()">انتخاب باکس</button>
         </div>
       </div>
     </div>
@@ -728,7 +740,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
     <div class="sheet" id="cardSheet">
       <div class="sh-handle"></div>
       <div class="sh-hd">
-        <div class="sh-title"><span>🃏</span> انتخاب کارت</div>
+        <div class="sh-title"><span>🃏</span> انتخاب باکس</div>
         <div class="sh-meta">
           <div class="spins-pill"><span>💎</span><span id="cardGems">0</span><span style="font-size:.58rem;opacity:.6">الماس</span></div>
           <button class="sh-close" onclick="closeCardSheet()">✕</button>
@@ -740,10 +752,16 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
 
       <!-- action bar -->
       <div class="card-act">
-        <span class="card-act-hint">روی یک کارت بزن تا بخراشیش و جایزه‌ات رو ببینی</span>
-        <button class="tg-btn btn-rm" id="btnCardRm" onclick="doCardRemove()">
-          ✕ حذف پوچ <span class="cost-chip">💎 ۱</span>
-        </button>
+        <span class="card-act-hint" id="cardHint">اول باید درب درست در دیتابیس ذخیره شود.</span>
+        <div class="card-odds" id="cardOdds"></div>
+        <div class="card-act-row">
+          <button class="tg-btn btn-rm dis" id="btnCardRm" onclick="doCardRemove()">
+            ✕ حذف پوچ <span class="cost-chip">💎 ۱</span>
+          </button>
+          <button class="tg-btn btn-boost dis" id="btnCardOpen" onclick="confirmFinalPick()">
+            باز کردن باکس
+          </button>
+        </div>
       </div>
       <div style="height:env(safe-area-inset-bottom,12px);min-height:12px"></div>
     </div>
@@ -844,7 +862,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
           <li><strong>نحوه بازی:</strong> دستگیره را به پایین بکش و رها کن. قدرت = ۷۰٪ فاصله کشش + ۳۰٪ سرعت رها کردن.</li>
           <li><strong>کمان جک‌پات:</strong> کوچک شروع می‌شه. با خرج کردن 💎۲ تا سه‌بار می‌تونی ۱۰٪ بزرگش کنی.</li>
           <li><strong>حذف پوچ (گردونه):</strong> با 💎۵ می‌تونی کمان پوچ رو برای همیشه از گردونه حذف کنی.</li>
-          <li><strong>انتخاب کارت:</strong> روی یک کارت کلیک کن و بخراشش تا جایزه‌ات رو ببینی. حذف پوچ کارت فقط 💎۱ هزینه داره.</li>
+          <li><strong>انتخاب باکس (مونتی هال):</strong> قبل از شروع انتخاب، درب درست در دیتابیس ذخیره می‌شود و دیگر جابه‌جا نمی‌شود. اول یک باکس را انتخاب کن. حذف پوچ فقط بعد از این انتخاب و قبل از باز کردن باکس نهایی، یک در پوچ را که درب درست نیست برمی‌دارد و شانس عوض کردن را بالا می‌برد.</li>
           <li><strong>اسپین‌های روزانه:</strong> ۳ اسپین رایگان در روز. با دعوت دوستان الماس کسب کن.</li>
           <li><strong>الماس‌ها:</strong> برای هر دعوت‌شده 💎۳ دریافت می‌کنی. از الماس برای فعال کردن قابلیت‌های ویژه استفاده کن.</li>
           <li><strong>اعلام نتایج:</strong> برندگان ظرف ۴۸ ساعت اطلاع‌رسانی می‌شن. جوایز قابل انتقال نیستن.</li>
@@ -1328,7 +1346,7 @@ const WINNERS_DATA = [
   { phone:'0910 **** 554' },
   { phone:'0912 **** 345' },
 ];
-const GAMES = ['گردونه شانس', 'انتخاب کارت'];
+const GAMES = ['گردونه شانس', 'انتخاب باکس'];
 const GAME_EMOJIS = ['🎡', '🃏'];
 const GAME_CLASSES = ['wheel', 'card'];
 const TIMES = ['همین الان', '۳ دقیقه پیش', '۱۲ دقیقه پیش', '۲۸ دقیقه پیش', '۱ ساعت پیش'];
@@ -1382,196 +1400,249 @@ const BOX_IMGS = [
 ];
 const BOX_NAMES = ['رستوران','کافه','نانوایی','شیرینی','میوه','آجیل','آبمیوه','سوپرمارکت','پروتئین'];
 
-const CARD_PRIZES = [
-  { emoji:'💰', val:'۵۰ هزار تومان اعتبار', win:true  },
-  { emoji:'⭐', val:'۳۰٪ کد تخفیف',          win:true  },
-  { emoji:'🎁', val:'هدیه ویژه',              win:true  },
-  { emoji:'❌', val:'پوچ',                    win:false },
-];
+const MAX_CARD_REMOVES = 7;
+let cardPhase = 'idle';
+let cardRound = null;
+let cardBusy = false;
+let cardRemoveUsed = 0;
 
-/* Card state */
-let cardBoxes = []; // { id, prizeIdx, revealed, scratched }
+function faNum(n) {
+  return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+}
 
-function initCardGame() {
-  cardRemoveUsed = 0;
-  document.getElementById('btnCardRm').classList.remove('dis');
-  const prizeWinner = Math.floor(Math.random() * 9);
-  const emptyIdxs = [];
-  while (emptyIdxs.length < 4) {
-    const r = Math.floor(Math.random() * 9);
-    if (r !== prizeWinner && !emptyIdxs.includes(r)) emptyIdxs.push(r);
+function setCardControls() {
+  const hint = document.getElementById('cardHint');
+  const odds = document.getElementById('cardOdds');
+  const rm = document.getElementById('btnCardRm');
+  const open = document.getElementById('btnCardOpen');
+  rm.classList.add('dis');
+  open.classList.add('dis');
+  if (cardPhase === 'loading') {
+    hint.textContent = 'در حال ذخیره درب درست در دیتابیس… تا وقتی ثبت نشود انتخاب شروع نمی‌شود.';
+    odds.textContent = '';
+    return;
   }
-  cardBoxes = Array.from({ length: 9 }, (_, i) => {
-    let pi;
-    if (i === prizeWinner) pi = Math.floor(Math.random() * 3); // one of win prizes
-    else if (emptyIdxs.includes(i)) pi = 3; // empty
-    else pi = Math.floor(Math.random() * 3);
-    return { id: i, prizeIdx: pi, revealed: false, scratched: false };
-  });
+  if (cardPhase === 'error') {
+    hint.textContent = 'درب درست ذخیره نشد. شیت را ببند و دوباره باز کن.';
+    odds.textContent = '';
+    return;
+  }
+  if (cardPhase === 'select-first') {
+    hint.textContent = 'اول یک باکس را انتخاب کن. درب درست از قبل در دیتابیس ثبت شده و جابه‌جا نمی‌شود.';
+    odds.textContent = 'شانس هر باکس: ۱ از ۹';
+    return;
+  }
+  if (cardPhase === 'between') {
+    const removed = cardRound.removed.length;
+    rm.classList.toggle('dis', cardBusy || removed >= MAX_CARD_REMOVES);
+    open.classList.toggle('dis', cardBusy || cardRound.finalTarget == null);
+    if (!removed) {
+      hint.textContent = 'حذف پوچ را قبل از باز کردن بزن. میزبان فقط در پوچ را برمی‌دارد، نه درب درست را.';
+      odds.textContent = 'ماندن هنوز ۱ از ۹ است. حذف پوچ شانس عوض کردن را جمع می‌کند.';
+      return;
+    }
+    const others = 8 - removed;
+    hint.textContent = 'این حذف بین انتخاب اول و انتخاب نهایی است و نتیجه را عوض می‌کند. باکس نهایی را مشخص کن و باز کن.';
+    odds.textContent = others <= 1
+      ? 'ماندن: ۱ از ۹ · عوض کردن به تنها باکس باقی‌مانده: ۸ از ۹'
+      : `ماندن: ۱ از ۹ · هر باکس دیگر: ۸ از ۹ تقسیم بر ${faNum(others)}`;
+    return;
+  }
+  if (cardPhase === 'done' && cardRound && cardRound.resolved) {
+    const result = cardRound.resolved;
+    hint.textContent = result.won
+      ? (result.stayed ? 'ماندی و همان درب درست از اول مال تو بود.' : 'عوض کردی و درب درست را بردی.')
+      : (result.stayed ? 'ماندی. درب درست از اول جای دیگری ثبت شده بود.' : 'این باکس پوچ بود. درب درست از اول جای دیگری ثبت شده بود.');
+    odds.textContent = result.removed.length
+      ? `میزبان بعد از انتخاب اول ${faNum(result.removed.length)} در پوچ را برداشت.`
+      : 'بدون حذف پوچ، شانس همان ۱ از ۹ ماند.';
+  }
+}
+
+async function initCardGame() {
+  cardRound = null;
+  cardPhase = 'loading';
+  cardBusy = false;
+  cardRemoveUsed = 0;
   renderCardGrid();
+  setCardControls();
+  try {
+    const res = await fetch('/api/game/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (!res.ok || data.committed !== true || !data.gameId) throw new Error('not stored');
+    cardRound = {
+      gameId: data.gameId,
+      firstPick: null,
+      finalTarget: null,
+      removed: [],
+      resolved: null,
+    };
+    cardPhase = 'select-first';
+  } catch (err) {
+    cardPhase = 'error';
+    showToast('درب درست در دیتابیس ذخیره نشد. انتخاب ممکن نیست.');
+  }
+  renderCardGrid();
+  setCardControls();
 }
 
 function renderCardGrid() {
   const grid = document.getElementById('cardGrid');
   grid.innerHTML = '';
-  cardBoxes.forEach(b => {
+  if (cardPhase === 'loading' || cardPhase === 'idle') {
+    grid.innerHTML = '<div class="card-wait">در حال ثبت درب درست…</div>';
+    return;
+  }
+  if (cardPhase === 'error' || !cardRound) {
+    grid.innerHTML = '<div class="card-wait">بدون درب ثبت‌شده، باکسی انتخاب نمی‌شود.</div>';
+    return;
+  }
+  const resolved = cardRound.resolved;
+  for (let i = 0; i < 9; i++) {
+    const removed = cardRound.removed.includes(i);
+    const isFirst = cardRound.firstPick === i;
+    const switching = cardPhase === 'between' && cardRound.finalTarget !== cardRound.firstPick;
+    const isFinal = switching && cardRound.finalTarget === i;
+    const isWinner = !!(resolved && resolved.winningBox === i);
     const el = document.createElement('div');
-    el.className = 'cbox' + (b.revealed ? ' revealed' : ' active');
-    el.dataset.id = b.id;
+    el.className = 'cbox'
+      + (removed ? ' revealed' : ' active')
+      + (isFirst ? ' chosen' : '')
+      + (isFinal ? ' final' : '')
+      + (isWinner ? ' winner' : '');
+    el.dataset.id = String(i);
 
-    const prize = CARD_PRIZES[b.prizeIdx];
-    if (b.revealed) {
-      // show X
-      el.innerHTML = `<div class="cbox-x">✕</div><div class="cbox-name" style="color:rgba(255,92,92,.5)">پوچ</div>`;
+    let badge = '';
+    if (isFinal) badge = '<div class="cbox-badge">نهایی</div>';
+    else if (isFirst) badge = '<div class="cbox-badge">انتخاب اول</div>';
+
+    if (removed) {
+      el.innerHTML = `${badge}<div class="cbox-x">✕</div><div class="cbox-name" style="color:rgba(255,92,92,.5)">پوچ</div>`;
+    } else if (resolved && i === resolved.finalPick) {
+      const prize = resolved.prize;
+      el.innerHTML = `${badge}<div class="sp-emoji">${prize.emoji}</div><div class="sp-val ${prize.win ? '' : 'lose'}">${prize.val}</div>`;
+    } else if (resolved && isWinner) {
+      const prize = resolved.winningPrize;
+      el.innerHTML = `${badge}<div class="sp-emoji">${prize.emoji}</div><div class="sp-val">درب درست</div>`;
+    } else if (resolved) {
+      el.innerHTML = `${badge}<div class="cbox-x">✕</div><div class="cbox-name" style="color:rgba(255,92,92,.5)">پوچ</div>`;
     } else {
-      // show vendor image + scratch wrap
-      el.innerHTML = `
-        <img class="cbox-img" src="${BOX_IMGS[b.id]}" alt="${BOX_NAMES[b.id]}" loading="lazy">
-        <div class="cbox-name">${BOX_NAMES[b.id]}</div>
-        <div class="scratch-wrap" id="sw${b.id}">
-          <div class="scratch-prize ${prize.win ? 'win' : 'lose'}">
-            <div class="sp-emoji">${prize.emoji}</div>
-            <div class="sp-val ${prize.win ? '' : 'lose'}">${prize.val}</div>
-          </div>
-          <canvas class="scratch-canvas" id="scc${b.id}"></canvas>
-        </div>`;
-      if (!b.scratched) el.addEventListener('click', () => onCardClick(b.id));
+      el.innerHTML = `${badge}<img class="cbox-img" src="${BOX_IMGS[i]}" alt="${BOX_NAMES[i]}" loading="lazy"><div class="cbox-name">${BOX_NAMES[i]}</div>`;
+      el.addEventListener('click', () => onCardClick(i));
     }
     grid.appendChild(el);
-  });
+  }
 }
 
-function onCardClick(id) {
-  const b = cardBoxes[id];
-  if (b.revealed || b.scratched) return;
-  // open scratch canvas
-  const sw = document.getElementById('sw' + id);
-  sw.classList.add('active');
-  const canvas = document.getElementById('scc' + id);
-  const el = document.querySelector(`.cbox[data-id="${id}"]`);
-  const rect = el.getBoundingClientRect();
-  canvas.width  = rect.width  || 100;
-  canvas.height = rect.height || 100;
-  const ctx = canvas.getContext('2d');
-
-  // fill with silver scratch layer
-  ctx.fillStyle = isLight() ? '#b0b8c8' : '#3a4458';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = isLight() ? '#c0c8d4' : '#4a5468';
-  for (let i = 0; i < 30; i++) {
-    ctx.beginPath(); ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 6 + 2, 0, Math.PI * 2);
-    ctx.fill();
+async function onCardClick(id) {
+  if (cardBusy || !cardRound) return;
+  if (cardRound.removed.includes(id)) return;
+  if (cardPhase === 'select-first') {
+    cardBusy = true;
+    setCardControls();
+    try {
+      const res = await fetch('/api/game/pick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId: cardRound.gameId, box: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'pick');
+      cardRound.firstPick = data.firstPick;
+      cardRound.finalTarget = data.firstPick;
+      cardPhase = 'between';
+    } catch (err) {
+      showToast('انتخاب اول ثبت نشد. دوباره بزن.');
+    }
+    cardBusy = false;
+    renderCardGrid();
+    setCardControls();
+    return;
   }
-  // hint text
-  ctx.fillStyle = isLight() ? 'rgba(0,0,0,.3)' : 'rgba(255,255,255,.25)';
-  ctx.font = `bold ${Math.min(canvas.width / 6, 12)}px Vazirmatn,sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('بخراش!', canvas.width / 2, canvas.height / 2);
-
-  ctx.globalCompositeOperation = 'destination-out';
-  let totalPixels = canvas.width * canvas.height;
-  let isDrawing = false, lastX = 0, lastY = 0;
-
-  function getPos(e) {
-    const r = canvas.getBoundingClientRect();
-    if (e.touches) { return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top }; }
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  if (cardPhase === 'between') {
+    cardRound.finalTarget = id;
+    renderCardGrid();
+    setCardControls();
   }
-
-  function scratchAt(x, y) {
-    ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI * 2); ctx.fill();
-    // check coverage
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let cleared = 0;
-    for (let i = 3; i < img.data.length; i += 4) if (img.data[i] === 0) cleared++;
-    if (cleared / totalPixels > 0.5) autoReveal(id, canvas, sw);
-  }
-
-  canvas.addEventListener('pointerdown', e => { isDrawing = true; const p = getPos(e); scratchAt(p.x, p.y); lastX = p.x; lastY = p.y; e.preventDefault(); }, { passive: false });
-  canvas.addEventListener('pointermove', e => { if (!isDrawing) return; const p = getPos(e); scratchAt(p.x, p.y); e.preventDefault(); }, { passive: false });
-  canvas.addEventListener('pointerup',   () => { isDrawing = false; });
-  canvas.setPointerCapture && canvas.addEventListener('pointerdown', e => canvas.setPointerCapture(e.pointerId));
 }
 
-function autoReveal(id, canvas, sw) {
-  if (cardBoxes[id].scratched) return;
-  cardBoxes[id].scratched = true;
-  canvas.style.transition = 'opacity .6s';
-  canvas.style.opacity = '0';
-  setTimeout(() => {
-    sw.removeChild(canvas);
-    const prize = CARD_PRIZES[cardBoxes[id].prizeIdx];
-    if (prize.win) {
+async function doCardRemove() {
+  if (cardBusy || cardPhase !== 'between' || !cardRound) {
+    showToast('اول یک باکس را انتخاب کن.');
+    return;
+  }
+  if (cardRound.removed.length >= MAX_CARD_REMOVES) {
+    showToast('فقط دو باکس باید بسته بماند.');
+    return;
+  }
+  cardBusy = true;
+  setCardControls();
+  if (!spendGems(1)) {
+    cardBusy = false;
+    setCardControls();
+    return;
+  }
+  let spent = true;
+  try {
+    const res = await fetch('/api/game/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: cardRound.gameId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'remove');
+    cardRound.removed = data.removed;
+    cardRemoveUsed = data.removed.length;
+    if (cardRound.removed.includes(cardRound.finalTarget)) cardRound.finalTarget = cardRound.firstPick;
+    showToast(`✕ ${BOX_NAMES[data.removedBox]} پوچ بود. ${faNum(data.remainingRemovals)} حذف باقی است.`);
+  } catch (err) {
+    gems += 1;
+    updateGemUI();
+    spent = false;
+    showToast('حذف پوچ انجام نشد. الماس برگردانده شد.');
+  }
+  cardBusy = false;
+  renderCardGrid();
+  setCardControls();
+  void spent;
+}
+
+async function confirmFinalPick() {
+  if (cardBusy || cardPhase !== 'between' || !cardRound || cardRound.finalTarget == null) {
+    showToast('اول باکس نهایی را انتخاب کن.');
+    return;
+  }
+  if (cardRound.removed.includes(cardRound.finalTarget)) return;
+  cardBusy = true;
+  setCardControls();
+  try {
+    const res = await fetch('/api/game/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId: cardRound.gameId, box: cardRound.finalTarget }),
+    });
+    const data = await res.json();
+    if (!res.ok || typeof data.winningBox !== 'number') throw new Error(data.error || 'reveal');
+    cardRound.resolved = data;
+    cardPhase = 'done';
+    renderCardGrid();
+    setCardControls();
+    if (data.won) {
       launchConfetti();
-      addWinner({ emoji: prize.emoji, label: prize.val, special: prize.val.includes('۵۰') }, 1);
-      showToast(`🎉 ${prize.val} بردی!`);
+      addWinner({ emoji: data.prize.emoji, label: data.prize.val, special: false }, 1);
+      showToast(data.stayed ? `🎉 ماندی و ${data.prize.val} بردی` : `🎉 عوض کردی و ${data.prize.val} بردی`);
     } else {
-      showToast('❌ این کارت پوچ بود!');
+      showToast(data.stayed ? '❌ ماندی و پوچ بود' : '❌ این باکس پوچ بود');
     }
-  }, 650);
-}
-
-let cardRemoveUsed = 0;
-const MAX_CARD_REMOVES = 7;
-
-function doCardRemove() {
-  if (cardRemoveUsed >= MAX_CARD_REMOVES) { showToast('محدودیت حذف پوچ تموم شد!'); return; }
-  if (!spendGems(1)) return;
-  const empties = cardBoxes.filter(b => !b.revealed && !b.scratched && CARD_PRIZES[b.prizeIdx].win === false);
-  if (!empties.length) { showToast('کارت پوچی باقی نمونده!'); return; }
-  const target = empties[Math.floor(Math.random() * empties.length)];
-
-  // Scratch-reveal the empty card
-  const el = document.querySelector(`.cbox[data-id="${target.id}"]`);
-  if (!el) return;
-
-  // Activate scratch wrap (it already exists in DOM)
-  const sw = el.querySelector('.scratch-wrap');
-  if (!sw) return;
-  sw.classList.add('active');
-
-  const canvas = el.querySelector('.scratch-canvas');
-  if (!canvas) return;
-  const rect = el.getBoundingClientRect();
-  canvas.width  = rect.width  || 100;
-  canvas.height = rect.height || 100;
-  const ctx = canvas.getContext('2d');
-
-  // Draw scratch layer
-  ctx.fillStyle = '#3a4458';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#4a5468';
-  for (let i = 0; i < 20; i++) {
-    ctx.beginPath(); ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 5 + 2, 0, Math.PI * 2);
-    ctx.fill();
+  } catch (err) {
+    showToast('نتیجه از درب ثبت‌شده خوانده نشد. دوباره باز کن.');
   }
-
-  // Auto-scratch across the whole canvas in a sweeping animation
-  ctx.globalCompositeOperation = 'destination-out';
-  const totalW = canvas.width, totalH = canvas.height;
-  const steps = 20, dur = 500, t0 = performance.now();
-
-  function sweep(now) {
-    const p = Math.min((now - t0) / dur, 1);
-    const rows = Math.ceil(p * steps);
-    for (let r = 0; r < rows; r++) {
-      const y = (r / steps) * totalH + totalH / steps / 2;
-      for (let x = 0; x < totalW; x += 18) {
-        ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    if (p < 1) { requestAnimationFrame(sweep); return; }
-
-    // Done — fade and mark
-    canvas.style.transition = 'opacity .5s';
-    canvas.style.opacity = '0';
-    target.revealed = true;
-    cardRemoveUsed++;
-    if (cardRemoveUsed >= MAX_CARD_REMOVES) document.getElementById('btnCardRm').classList.add('dis');
-    setTimeout(() => { sw.removeChild(canvas); }, 550);
-    showToast(`✕ کارت ${BOX_NAMES[target.id]} پوچ بود! (${MAX_CARD_REMOVES - cardRemoveUsed} حذف باقی)`);
-  }
-  requestAnimationFrame(sweep);
+  cardBusy = false;
+  setCardControls();
 }
 
 /* ════════════════════════════════
@@ -1587,9 +1658,9 @@ function closeWheelSheet() {
   document.body.style.overflow = '';
 }
 function openCardSheet() {
-  initCardGame();
   document.getElementById('cardSheetOv').classList.add('open');
   document.body.style.overflow = 'hidden';
+  initCardGame();
 }
 function closeCardSheet() {
   document.getElementById('cardSheetOv').classList.remove('open');
