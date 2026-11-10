@@ -28,31 +28,40 @@ module.exports = async function handler(req, res) {
     `;
     if (!rows.length) {
       const existing = await sql`
-        SELECT status FROM monty_rounds WHERE id = ${id}::uuid
+        SELECT status, winning_box, prize_idx, first_pick, final_pick, removed_boxes, won
+        FROM monty_rounds
+        WHERE id = ${id}::uuid
       `;
       if (!existing.length) return send(res, 404, { error: 'not_found' });
-      return send(res, 409, { error: existing[0].status === 'open' ? 'pick_required' : 'already_resolved' });
+      const saved = existing[0];
+      if (saved.status === 'resolved' && Number(saved.final_pick) === box) {
+        return send(res, 200, revealPayload(id, saved));
+      }
+      return send(res, 409, { error: saved.status === 'open' ? 'pick_required' : 'already_resolved' });
     }
 
-    const row = rows[0];
-    const won = row.won === true || row.won === 't';
-    const firstPick = Number(row.first_pick);
-    const finalPick = Number(row.final_pick);
-    const winningPrize = WIN_PRIZES[Number(row.prize_idx)] || WIN_PRIZES[0];
-    return send(res, 200, {
-      gameId: id,
-      won,
-      winningBox: Number(row.winning_box),
-      firstPick,
-      finalPick,
-      stayed: finalPick === firstPick,
-      removed: asRemoved(row.removed_boxes),
-      prize: prizeFor(won, row.prize_idx),
-      winningPrize,
-    });
+    return send(res, 200, revealPayload(id, rows[0]));
   } catch (error) {
     if (error && error.code === 'NO_DATABASE') return send(res, 503, { error: 'no_database' });
     console.error('reveal failed');
     return send(res, 500, { error: 'server' });
   }
 };
+
+function revealPayload(id, row) {
+  const won = row.won === true || row.won === 't';
+  const firstPick = Number(row.first_pick);
+  const finalPick = Number(row.final_pick);
+  const winningPrize = WIN_PRIZES[Number(row.prize_idx)] || WIN_PRIZES[0];
+  return {
+    gameId: id,
+    won,
+    winningBox: Number(row.winning_box),
+    firstPick,
+    finalPick,
+    stayed: finalPick === firstPick,
+    removed: asRemoved(row.removed_boxes),
+    prize: prizeFor(won, row.prize_idx),
+    winningPrize,
+  };
+}

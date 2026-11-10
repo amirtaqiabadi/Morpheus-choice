@@ -1405,6 +1405,11 @@ let cardPhase = 'idle';
 let cardRound = null;
 let cardBusy = false;
 let cardRemoveUsed = 0;
+let cardEpoch = 0;
+
+function sameRound(epoch, gameId) {
+  return epoch === cardEpoch && cardRound && cardRound.gameId === gameId;
+}
 
 function faNum(n) {
   return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
@@ -1460,6 +1465,7 @@ function setCardControls() {
 }
 
 async function initCardGame() {
+  const epoch = ++cardEpoch;
   cardRound = null;
   cardPhase = 'loading';
   cardBusy = false;
@@ -1473,6 +1479,7 @@ async function initCardGame() {
       body: '{}',
     });
     const data = await res.json();
+    if (epoch !== cardEpoch) return;
     if (!res.ok || data.committed !== true || !data.gameId) throw new Error('not stored');
     cardRound = {
       gameId: data.gameId,
@@ -1483,9 +1490,11 @@ async function initCardGame() {
     };
     cardPhase = 'select-first';
   } catch (err) {
+    if (epoch !== cardEpoch) return;
     cardPhase = 'error';
     showToast('درب درست در دیتابیس ذخیره نشد. انتخاب ممکن نیست.');
   }
+  if (epoch !== cardEpoch) return;
   renderCardGrid();
   setCardControls();
 }
@@ -1542,22 +1551,27 @@ async function onCardClick(id) {
   if (cardBusy || !cardRound) return;
   if (cardRound.removed.includes(id)) return;
   if (cardPhase === 'select-first') {
+    const epoch = cardEpoch;
+    const gameId = cardRound.gameId;
     cardBusy = true;
     setCardControls();
     try {
       const res = await fetch('/api/game/pick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: cardRound.gameId, box: id }),
+        body: JSON.stringify({ gameId, box: id }),
       });
       const data = await res.json();
+      if (!sameRound(epoch, gameId)) return;
       if (!res.ok) throw new Error(data.error || 'pick');
       cardRound.firstPick = data.firstPick;
       cardRound.finalTarget = data.firstPick;
       cardPhase = 'between';
     } catch (err) {
+      if (!sameRound(epoch, gameId)) return;
       showToast('انتخاب اول ثبت نشد. دوباره بزن.');
     }
+    if (!sameRound(epoch, gameId)) return;
     cardBusy = false;
     renderCardGrid();
     setCardControls();
@@ -1579,22 +1593,25 @@ async function doCardRemove() {
     showToast('فقط دو باکس باید بسته بماند.');
     return;
   }
+  const epoch = cardEpoch;
+  const gameId = cardRound.gameId;
   cardBusy = true;
   setCardControls();
   if (!spendGems(1)) {
+    if (!sameRound(epoch, gameId)) return;
     cardBusy = false;
     setCardControls();
     return;
   }
-  let spent = true;
   try {
     const res = await fetch('/api/game/remove', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: cardRound.gameId }),
+      body: JSON.stringify({ gameId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'remove');
+    if (!sameRound(epoch, gameId)) return;
     cardRound.removed = data.removed;
     cardRemoveUsed = data.removed.length;
     if (cardRound.removed.includes(cardRound.finalTarget)) cardRound.finalTarget = cardRound.firstPick;
@@ -1602,13 +1619,13 @@ async function doCardRemove() {
   } catch (err) {
     gems += 1;
     updateGemUI();
-    spent = false;
+    if (!sameRound(epoch, gameId)) return;
     showToast('حذف پوچ انجام نشد. الماس برگردانده شد.');
   }
+  if (!sameRound(epoch, gameId)) return;
   cardBusy = false;
   renderCardGrid();
   setCardControls();
-  void spent;
 }
 
 async function confirmFinalPick() {
@@ -1617,15 +1634,19 @@ async function confirmFinalPick() {
     return;
   }
   if (cardRound.removed.includes(cardRound.finalTarget)) return;
+  const epoch = cardEpoch;
+  const gameId = cardRound.gameId;
+  const box = cardRound.finalTarget;
   cardBusy = true;
   setCardControls();
   try {
     const res = await fetch('/api/game/reveal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId: cardRound.gameId, box: cardRound.finalTarget }),
+      body: JSON.stringify({ gameId, box }),
     });
     const data = await res.json();
+    if (!sameRound(epoch, gameId)) return;
     if (!res.ok || typeof data.winningBox !== 'number') throw new Error(data.error || 'reveal');
     cardRound.resolved = data;
     cardPhase = 'done';
@@ -1639,8 +1660,10 @@ async function confirmFinalPick() {
       showToast(data.stayed ? '❌ ماندی و پوچ بود' : '❌ این باکس پوچ بود');
     }
   } catch (err) {
+    if (!sameRound(epoch, gameId)) return;
     showToast('نتیجه از درب ثبت‌شده خوانده نشد. دوباره باز کن.');
   }
+  if (!sameRound(epoch, gameId)) return;
   cardBusy = false;
   setCardControls();
 }

@@ -8,7 +8,7 @@ const start = require('../api/game/start');
 const pick = require('../api/game/pick');
 const remove = require('../api/game/remove');
 const reveal = require('../api/game/reveal');
-const { getSql } = require('../lib/db');
+const { getSql, applySchema } = require('../lib/db');
 
 (async () => {
   const started = await call(start, {});
@@ -49,7 +49,12 @@ const { getSql } = require('../lib/db');
   assert.equal(opened.body.won, other === winning);
   assert.equal(opened.body.stayed, false);
   const again = await call(reveal, { gameId, box: other });
-  assert.equal(again.status, 409);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.winningBox, opened.body.winningBox);
+  assert.equal(again.body.won, opened.body.won);
+  assert.equal(again.body.finalPick, other);
+  const different = await call(reveal, { gameId, box: first });
+  assert.equal(different.status, 409);
 
   let immutable = false;
   try {
@@ -58,6 +63,8 @@ const { getSql } = require('../lib/db');
     immutable = /immutable|winning door/i.test(String(error.message || error));
   }
   assert.equal(immutable, true);
+  await applySchema(sql);
+  await applySchema(sql);
   console.log(JSON.stringify({
     ok: true,
     switchedToStoredDoor: opened.body.won === (other === winning),

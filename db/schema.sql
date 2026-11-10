@@ -31,8 +31,17 @@ BEGIN
 END;
 $fn$;
 
-DROP TRIGGER IF EXISTS monty_lock_winning_door ON monty_rounds;
-CREATE TRIGGER monty_lock_winning_door
-BEFORE UPDATE ON monty_rounds
-FOR EACH ROW
-EXECUTE FUNCTION monty_lock_winning_door();
+DO $schema$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'monty_lock_winning_door'
+      AND tgrelid = 'monty_rounds'::regclass
+  ) THEN
+    CREATE TRIGGER monty_lock_winning_door
+    BEFORE UPDATE ON monty_rounds
+    FOR EACH ROW
+    EXECUTE FUNCTION monty_lock_winning_door();
+  END IF;
+END
+$schema$;
