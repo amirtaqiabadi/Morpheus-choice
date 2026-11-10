@@ -2,7 +2,7 @@
   "name": "morpheus-choice",
   "private": true,
   "scripts": {
-    "test": "node --test test/monty.test.js",
+    "test": "node --test test/monty.test.js test/telegram.test.js test/wheel.test.js test/referral.test.js",
     "dev": "node scripts/dev-server.js"
   },
   "dependencies": {

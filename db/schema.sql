@@ -31,6 +31,38 @@ BEGIN
 END;
 $fn$;
 
+CREATE TABLE IF NOT EXISTS app_users (
+  telegram_id bigint PRIMARY KEY,
+  username text,
+  first_name text,
+  last_name text,
+  photo_url text,
+  referral_code text NOT NULL UNIQUE,
+  gems integer NOT NULL DEFAULT 0 CHECK (gems >= 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS referrals (
+  invitee_id bigint PRIMARY KEY REFERENCES app_users (telegram_id),
+  inviter_id bigint NOT NULL REFERENCES app_users (telegram_id),
+  gems_awarded integer NOT NULL DEFAULT 3 CHECK (gems_awarded > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (invitee_id <> inviter_id)
+);
+
+CREATE INDEX IF NOT EXISTS referrals_inviter_idx ON referrals (inviter_id);
+
+ALTER TABLE monty_rounds ADD COLUMN IF NOT EXISTS telegram_id bigint;
+
+CREATE TABLE IF NOT EXISTS wheel_spins (
+  id uuid PRIMARY KEY,
+  telegram_id bigint NOT NULL REFERENCES app_users (telegram_id),
+  prize_id text NOT NULL CHECK (prize_id IN ('sp', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS wheel_spins_recent_idx ON wheel_spins (created_at DESC);
+
 DO $schema$
 BEGIN
   IF NOT EXISTS (
