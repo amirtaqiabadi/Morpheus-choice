@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS referrals (
 
 CREATE INDEX IF NOT EXISTS referrals_inviter_idx ON referrals (inviter_id);
 
+ALTER TABLE monty_rounds ADD COLUMN IF NOT EXISTS telegram_id bigint;
+
+CREATE TABLE IF NOT EXISTS wheel_spins (
+  id uuid PRIMARY KEY,
+  telegram_id bigint NOT NULL REFERENCES app_users (telegram_id),
+  prize_id text NOT NULL CHECK (prize_id IN ('sp', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS wheel_spins_recent_idx ON wheel_spins (created_at DESC);
+
 DO $schema$
 BEGIN
   IF NOT EXISTS (

@@ -44,6 +44,36 @@ test('a new friend credits the inviter once', { skip: !enabled }, async () => {
     assert.equal(spent.gems, 1);
     const broke = await spendGems(sql, inviterId, 'wheel-empty');
     assert.equal(broke.error, 'insufficient');
+
+    await sql`UPDATE app_users SET gems = 1 WHERE telegram_id = ${inviterId}::bigint`;
+    const roundId = '11111111-1111-4111-8111-111111111111';
+    await sql`
+      INSERT INTO monty_rounds (id, winning_box, prize_idx, first_pick, status, telegram_id, picked_at)
+      VALUES (${roundId}::uuid, 0, 0, 1, 'picked', ${inviterId}::bigint, now())
+    `;
+    let rolledBack = false;
+    try {
+      await sql`
+        SELECT gems FROM monty_paid_remove(${inviterId}::bigint, ${roundId}::uuid, 3::smallint, 9)
+      `;
+    } catch (error) {
+      rolledBack = error && error.code === 'P0002';
+    }
+    const afterConflict = await sql`SELECT gems FROM app_users WHERE telegram_id = ${inviterId}::bigint`;
+    assert.equal(rolledBack, true);
+    assert.equal(Number(afterConflict[0].gems), 1);
+    const removed = await sql`SELECT removed_boxes FROM monty_rounds WHERE id = ${roundId}::uuid`;
+    assert.deepEqual(removed[0].removed_boxes, []);
+
+    const { removeGoat } = require('../lib/rounds');
+    const paid = await removeGoat(sql, roundId, inviterId);
+    assert.equal(paid.status, 200);
+    assert.equal(paid.gems, 0);
+    assert.equal(paid.removed.length, 1);
+    const brokeRemove = await removeGoat(sql, roundId, inviterId);
+    assert.equal(brokeRemove.error, 'insufficient');
+    const stillOne = await sql`SELECT cardinality(removed_boxes)::int AS n FROM monty_rounds WHERE id = ${roundId}::uuid`;
+    assert.equal(Number(stillOne[0].n), 1);
   } finally {
     await cleanup(sql);
   }
@@ -56,6 +86,8 @@ function profile(id, name) {
 async function cleanup(sql) {
   const ids = [inviterId, inviteeId, strangerId];
   await sql`DELETE FROM referrals WHERE invitee_id = ANY(${ids}::bigint[]) OR inviter_id = ANY(${ids}::bigint[])`;
+  await sql`DELETE FROM wheel_spins WHERE telegram_id = ANY(${ids}::bigint[])`;
+  await sql`DELETE FROM monty_rounds WHERE telegram_id = ANY(${ids}::bigint[])`;
   await sql`DELETE FROM app_users WHERE telegram_id = ANY(${ids}::bigint[])`;
 }
 

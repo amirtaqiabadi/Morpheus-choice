@@ -1,6 +1,7 @@
 const { randomInt, randomUUID } = require('crypto');
 const { getSql, ensureSchema } = require('../../lib/db');
 const { send } = require('../../lib/http');
+const { readSession } = require('../../lib/session');
 const { BOX_COUNT, WIN_PRIZES } = require('../../lib/monty');
 
 module.exports = async function handler(req, res) {
@@ -11,9 +12,10 @@ module.exports = async function handler(req, res) {
     const id = randomUUID();
     const winningBox = randomInt(0, BOX_COUNT);
     const prizeIdx = randomInt(0, WIN_PRIZES.length);
+    const player = playerId(req);
     const inserted = await sql`
-      INSERT INTO monty_rounds (id, winning_box, prize_idx)
-      VALUES (${id}::uuid, ${winningBox}, ${prizeIdx})
+      INSERT INTO monty_rounds (id, winning_box, prize_idx, telegram_id)
+      VALUES (${id}::uuid, ${winningBox}, ${prizeIdx}, ${player}::bigint)
       RETURNING id
     `;
     if (!inserted.length) return send(res, 500, { error: 'not_stored' });
@@ -40,3 +42,14 @@ module.exports = async function handler(req, res) {
     return send(res, 500, { error: 'server' });
   }
 };
+
+function playerId(req) {
+  try {
+    if (!req.headers) return null;
+    const session = readSession(req);
+    return session ? session.telegramId : null;
+  } catch (error) {
+    if (error && error.code === 'NO_TELEGRAM') return null;
+    throw error;
+  }
+}

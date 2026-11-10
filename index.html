@@ -559,7 +559,8 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
 .wav.card{background:rgba(255,92,92,.16);border:1px solid rgba(255,92,92,.28)}
 .wav.sp{background:conic-gradient(from 0deg,#ff4e6a,#ffd600,#3fff8a,#30b8ff,#a855f7,#ff4e6a);border:none}
 .winf{flex:1;min-width:0}
-.wname{font-size:.76rem;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Space Mono',monospace;font-size:.72rem;letter-spacing:.04em}
+.wname{font-size:.76rem;font-weight:600;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--ff)}
+.wempty{padding:16px 14px;font-size:.74rem;color:var(--tx2);text-align:center;line-height:1.6}
 .wtime{font-size:.6rem;color:var(--tx2);margin-top:1px}
 .wprz{font-size:.67rem;font-weight:700;padding:3px 9px;border-radius:100px;white-space:nowrap}
 .wprz.nm{background:var(--surf2);color:var(--tx2);border:1px solid var(--brd)}
@@ -882,7 +883,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
   <!-- WINNERS -->
   <div class="tg-sec">
     <div class="tg-sec-hd"><div class="tg-sec-ttl"><span>🏆</span> آخرین برندگان</div></div>
-    <div class="wlist" id="wlist"></div>
+    <div class="wlist" id="wlist"><div class="wempty">در حال خواندن برنده‌ها…</div></div>
   </div>
 
   <!-- RULES -->
@@ -1271,17 +1272,37 @@ window.addEventListener('pointerup',   e => { if (dragging && e.pointerId === ac
 /* ════════════════════════════════
    SPIN ENGINE
 ════════════════════════════════ */
-function triggerSpin(dist, vel) {
-  if (isSpinning || spinsLeft <= 0) { showToast('اسپین نداری! دوستانت رو دعوت کن.'); return; }
-  isSpinning = true; spinsLeft--;
-  const os = document.getElementById('objSpins'); if (os) os.textContent = spinsLeft;
-
-  const wo = document.getElementById('wOuter');
-  wo.style.filter = 'drop-shadow(0 8px 28px rgba(240,180,41,.65)) brightness(1.2)';
-  setTimeout(() => { wo.style.filter = ''; _doSpin(dist, vel); }, 120);
+function setSpinsLeft(n) {
+  spinsLeft = n;
+  const os = document.getElementById('objSpins');
+  if (os) os.textContent = spinsLeft;
 }
 
-function _doSpin(dist, vel) {
+async function triggerSpin(dist, vel) {
+  if (isSpinning || spinsLeft <= 0) { showToast('اسپین نداری! دوستانت رو دعوت کن.'); return; }
+  isSpinning = true;
+  let data;
+  try {
+    const result = await api('/api/game/spin', {});
+    data = result.data;
+    if (!result.res.ok) {
+      isSpinning = false;
+      if (data.error === 'no_spins') setSpinsLeft(0);
+      showToast(data.error === 'unauthorized' ? 'اول با تلگرام وارد شو.' : data.error === 'no_spins' ? 'اسپین نداری! دوستانت رو دعوت کن.' : 'نتیجه گردونه در دیتابیس ثبت نشد.');
+      return;
+    }
+  } catch (err) {
+    isSpinning = false;
+    showToast('نتیجه گردونه در دیتابیس ثبت نشد.');
+    return;
+  }
+  if (typeof data.spinsLeft === 'number') setSpinsLeft(data.spinsLeft);
+  const wo = document.getElementById('wOuter');
+  wo.style.filter = 'drop-shadow(0 8px 28px rgba(240,180,41,.65)) brightness(1.2)';
+  setTimeout(() => { wo.style.filter = ''; _doSpin(dist, vel, data.prizeId); }, 120);
+}
+
+function _doSpin(dist, vel, prizeId) {
   const max = C.maxPull * C.pullSensitivity;
   const t = Math.min(dist / max, 1);
   const vb = Math.min(vel / 3, .3);
@@ -1293,9 +1314,12 @@ function _doSpin(dist, vel) {
 
   const active = PRIZES.filter(p => !p.removed);
   const angs = [...dispAngles];
-  let rnd = Math.random() * angs.reduce((a, b) => a + b, 0);
-  let ws = 0;
-  for (let i = 0; i < active.length; i++) { rnd -= angs[i]; if (rnd <= 0) { ws = i; break; } }
+  const ws = active.findIndex(p => p.id === prizeId);
+  if (ws < 0) {
+    isSpinning = false;
+    showToast('نتیجه گردونه در دیتابیس ثبت نشد.');
+    return;
+  }
 
   const starts = getStarts(angs);
   const secMid = starts[ws] + angs[ws] / 2;
@@ -1385,7 +1409,7 @@ function physicsAnim(startA, endA, dur, power, winPrize, rotations, ovVar) {
 
 function finishSpin(prize, power, rotations) {
   isSpinning = false; spinCount++;
-  addWinner(prize, 0);
+  if (!prize.empty) loadLeaderboard();
   showResult(prize, power, rotations);
   if (prize.special) launchConfetti();
 }
@@ -1408,52 +1432,58 @@ function closeResult() { document.getElementById('resOv').classList.remove('show
 function shareRes() { copyCode(); showToast('لینک کپی شد!'); }
 
 /* ════════════════════════════════
-   WINNERS (Persian + game type)
+   LEADERBOARD
 ════════════════════════════════ */
-const WINNERS_DATA = [
-  { phone:'0912 **** 341' },
-  { phone:'0912 **** 782' },
-  { phone:'0935 **** 019' },
-  { phone:'0910 **** 554' },
-  { phone:'0912 **** 345' },
-];
-const GAMES = ['گردونه شانس', 'انتخاب باکس'];
-const GAME_EMOJIS = ['🎡', '🃏'];
-const GAME_CLASSES = ['wheel', 'card'];
-const TIMES = ['همین الان', '۳ دقیقه پیش', '۱۲ دقیقه پیش', '۲۸ دقیقه پیش', '۱ ساعت پیش'];
-
-function wHTML(u, prize, time, gameIdx) {
-  const gc = prize.special ? 'sp' : GAME_CLASSES[gameIdx];
-  const em = prize.special ? '⭐' : GAME_EMOJIS[gameIdx];
-  return `<div class="wrow">
-    <div class="wav ${gc}">${em}</div>
-    <div class="winf">
-      <div class="wname">${u.phone}</div>
-      <div class="wtime">${time}</div>
-    </div>
-    <div class="wprz ${prize.special ? 'sp' : 'nm'}">${prize.label}</div>
-  </div>`;
+function relativeTime(iso) {
+  const sec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (!Number.isFinite(sec) || sec < 60) return 'همین الان';
+  if (sec < 3600) return faNum(Math.floor(sec / 60)) + ' دقیقه پیش';
+  if (sec < 86400) return faNum(Math.floor(sec / 3600)) + ' ساعت پیش';
+  return faNum(Math.floor(sec / 86400)) + ' روز پیش';
 }
 
-function buildWinners() {
-  document.getElementById('wlist').innerHTML = [
-    [WINNERS_DATA[0], PRIZES[0], TIMES[0], 0],
-    [WINNERS_DATA[1], PRIZES[2], TIMES[1], 1],
-    [WINNERS_DATA[2], PRIZES[7], TIMES[2], 0],
-    [WINNERS_DATA[3], PRIZES[1], TIMES[3], 1],
-    [WINNERS_DATA[4], PRIZES[5], TIMES[4], 0],
-  ].map(r => wHTML(...r)).join('');
-}
-
-function addWinner(prize, gameIdx) {
+function renderLeaderboard(entries) {
   const list = document.getElementById('wlist');
-  const d = document.createElement('div');
-  d.innerHTML = wHTML({ phone: '0912 **** 345' }, prize, TIMES[0], gameIdx);
-  const el = d.firstElementChild; el.style.background = 'rgba(46,166,255,.06)';
-  list.prepend(el);
-  while (list.children.length > 8) list.removeChild(list.lastChild);
+  list.textContent = '';
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'wempty';
+    empty.textContent = 'هنوز برنده‌ای در دیتابیس ثبت نشده.';
+    list.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement('div');
+    row.className = 'wrow';
+    const avatar = document.createElement('div');
+    avatar.className = 'wav ' + (entry.special ? 'sp' : entry.game === 'wheel' ? 'wheel' : 'card');
+    avatar.textContent = entry.special ? '⭐' : entry.game === 'wheel' ? '🎡' : '🃏';
+    const info = document.createElement('div');
+    info.className = 'winf';
+    const name = document.createElement('div');
+    name.className = 'wname';
+    name.textContent = entry.name || 'بازیکن';
+    const time = document.createElement('div');
+    time.className = 'wtime';
+    time.textContent = relativeTime(entry.at);
+    info.append(name, time);
+    const prize = document.createElement('div');
+    prize.className = 'wprz ' + (entry.special ? 'sp' : 'nm');
+    prize.textContent = entry.label || '';
+    row.append(avatar, info, prize);
+    list.appendChild(row);
+  }
 }
-buildWinners();
+
+async function loadLeaderboard() {
+  try {
+    const { res, data } = await api('/api/leaderboard');
+    if (!res.ok || !Array.isArray(data.winners)) return;
+    renderLeaderboard(data.winners);
+    if (typeof data.spinsLeft === 'number') setSpinsLeft(data.spinsLeft);
+  } catch (err) {}
+}
+loadLeaderboard();
 
 /* ════════════════════════════════
    CARD GAME
@@ -1544,12 +1574,9 @@ async function initCardGame() {
   renderCardGrid();
   setCardControls();
   try {
-    const res = await fetch('/api/game/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-    const data = await res.json();
+    const started = await api('/api/game/start', {});
+    const res = started.res;
+    const data = started.data;
     if (epoch !== cardEpoch) return;
     if (!res.ok || data.committed !== true || !data.gameId) throw new Error('not stored');
     cardRound = {
@@ -1668,30 +1695,26 @@ async function doCardRemove() {
   const gameId = cardRound.gameId;
   cardBusy = true;
   setCardControls();
-  if (!(await spendGems('card-remove'))) {
-    if (!sameRound(epoch, gameId)) return;
-    cardBusy = false;
-    setCardControls();
-    return;
-  }
   try {
-    const res = await fetch('/api/game/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameId }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'remove');
+    const result = await api('/api/game/remove', { gameId });
+    const data = result.data;
     if (!sameRound(epoch, gameId)) return;
+    if (data.error === 'insufficient') {
+      if (typeof data.gems === 'number') { gems = data.gems; updateGemUI(); }
+      showToast(`💎 کافی نیست — ${typeof data.gems === 'number' ? data.gems : gems} موجود`);
+      cardBusy = false;
+      setCardControls();
+      return;
+    }
+    if (!result.res.ok) throw new Error(data.error || 'remove');
+    if (typeof data.gems === 'number') { gems = data.gems; updateGemUI(); }
     cardRound.removed = data.removed;
     cardRemoveUsed = data.removed.length;
     if (cardRound.removed.includes(cardRound.finalTarget)) cardRound.finalTarget = cardRound.firstPick;
     showToast(`✕ ${BOX_NAMES[data.removedBox]} پوچ بود. ${faNum(data.remainingRemovals)} حذف باقی است.`);
   } catch (err) {
-    gems += 1;
-    updateGemUI();
     if (!sameRound(epoch, gameId)) return;
-    showToast('حذف پوچ انجام نشد. الماس برگردانده شد.');
+    showToast('حذف پوچ انجام نشد.');
   }
   if (!sameRound(epoch, gameId)) return;
   cardBusy = false;
@@ -1725,7 +1748,7 @@ async function confirmFinalPick() {
     setCardControls();
     if (data.won) {
       launchConfetti();
-      addWinner({ emoji: data.prize.emoji, label: data.prize.val, special: false }, 1);
+      loadLeaderboard();
       showToast(data.stayed ? `🎉 ماندی و ${data.prize.val} بردی` : `🎉 عوض کردی و ${data.prize.val} بردی`);
     } else {
       showToast(data.stayed ? '❌ ماندی و پوچ بود' : '❌ این باکس پوچ بود');
@@ -1899,6 +1922,7 @@ function applyProfile(data) {
     }
   }
   document.getElementById('authGate').classList.add('hidden');
+  loadLeaderboard();
 }
 
 function authMessage(error) {

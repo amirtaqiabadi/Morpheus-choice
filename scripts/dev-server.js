@@ -14,6 +14,8 @@ const authMiniapp = require('../api/auth/miniapp');
 const authStart = require('../api/auth/start');
 const authCallback = require('../api/auth/callback');
 const walletSpend = require('../api/wallet/spend');
+const leaderboard = require('../api/leaderboard');
+const spin = require('../api/game/spin');
 
 const routes = {
   '/api/game/start': start,
@@ -26,6 +28,8 @@ const routes = {
   '/api/auth/start': authStart,
   '/api/auth/callback': authCallback,
   '/api/wallet/spend': walletSpend,
+  '/api/leaderboard': leaderboard,
+  '/api/game/spin': spin,
 };
 
 const root = path.join(__dirname, '..');
