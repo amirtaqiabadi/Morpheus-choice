@@ -8,12 +8,24 @@ const start = require('../api/game/start');
 const pick = require('../api/game/pick');
 const remove = require('../api/game/remove');
 const reveal = require('../api/game/reveal');
+const authConfig = require('../api/auth/config');
+const authMe = require('../api/auth/me');
+const authMiniapp = require('../api/auth/miniapp');
+const authStart = require('../api/auth/start');
+const authCallback = require('../api/auth/callback');
+const walletSpend = require('../api/wallet/spend');
 
 const routes = {
   '/api/game/start': start,
   '/api/game/pick': pick,
   '/api/game/remove': remove,
   '/api/game/reveal': reveal,
+  '/api/auth/config': authConfig,
+  '/api/auth/me': authMe,
+  '/api/auth/miniapp': authMiniapp,
+  '/api/auth/start': authStart,
+  '/api/auth/callback': authCallback,
+  '/api/wallet/spend': walletSpend,
 };
 
 const root = path.join(__dirname, '..');

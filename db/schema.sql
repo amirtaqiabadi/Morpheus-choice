@@ -31,6 +31,27 @@ BEGIN
 END;
 $fn$;
 
+CREATE TABLE IF NOT EXISTS app_users (
+  telegram_id bigint PRIMARY KEY,
+  username text,
+  first_name text,
+  last_name text,
+  photo_url text,
+  referral_code text NOT NULL UNIQUE,
+  gems integer NOT NULL DEFAULT 0 CHECK (gems >= 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS referrals (
+  invitee_id bigint PRIMARY KEY REFERENCES app_users (telegram_id),
+  inviter_id bigint NOT NULL REFERENCES app_users (telegram_id),
+  gems_awarded integer NOT NULL DEFAULT 3 CHECK (gems_awarded > 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (invitee_id <> inviter_id)
+);
+
+CREATE INDEX IF NOT EXISTS referrals_inviter_idx ON referrals (inviter_id);
+
 DO $schema$
 BEGIN
   IF NOT EXISTS (

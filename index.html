@@ -88,6 +88,30 @@ body.cshake{animation:cShake .3s ease}
 }
 .gem-counter.pulse{animation:gemPulse .4s ease}
 @keyframes gemPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18);box-shadow:0 0 16px var(--gemg)}}
+.tg-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.auth-gate{
+  position:fixed;inset:0;z-index:300;
+  background:rgba(14,22,33,.94);
+  display:flex;align-items:flex-end;justify-content:center;
+  padding:16px;
+}
+.auth-gate.hidden{display:none}
+.auth-card{
+  width:100%;max-width:430px;
+  background:var(--surf);border:1px solid var(--brd2);
+  border-radius:22px;padding:22px 18px 18px;margin-bottom:12px;
+}
+.auth-title{font-size:1.15rem;font-weight:800;margin-bottom:8px}
+.auth-copy{font-size:.84rem;color:var(--tx2);line-height:1.7;margin-bottom:16px}
+.auth-btn,.auth-link{
+  display:block;width:100%;border:none;border-radius:12px;
+  background:var(--blue);color:#fff;text-align:center;text-decoration:none;
+  font-family:var(--ff);font-weight:700;font-size:.95rem;
+  padding:12px;cursor:pointer;
+}
+.auth-btn[hidden],.auth-link[hidden]{display:none}
+.auth-link{margin-top:8px;background:transparent;border:1px solid rgba(46,166,255,.35);color:var(--blue2)}
+.auth-status{margin-top:12px;font-size:.78rem;color:var(--tx2);line-height:1.6;min-height:1.2em}
 
 /* ═══════════════════════════════
    HANDS HERO
@@ -613,7 +637,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
       <button class="btn-shr" onclick="shareRes()">اشتراک 🔗</button>
     </div>
     <div class="re-ctas">
-      <button class="re-cta inv" onclick="closeResult()">👥 دعوت دوستان</button>
+      <button class="re-cta inv" onclick="shareTG()">👥 دعوت دوستان</button>
       <button class="re-cta"     onclick="closeResult()">⏱ اسپین بعدی</button>
     </div>
   </div>
@@ -621,14 +645,24 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
 
 <div class="toast" id="toast"></div>
 
+<div class="auth-gate" id="authGate">
+  <div class="auth-card">
+    <div class="auth-title">ورود با تلگرام</div>
+    <div class="auth-copy">بازی به‌صورت مینی‌اپ داخل تلگرام باز می‌شود. با همان حساب وارد شو تا دعوت دوستان و الماس‌ها روی حساب خودت بماند.</div>
+    <button class="auth-btn" id="loginBtn" hidden onclick="startTelegramLogin()">ورود با تلگرام</button>
+    <a class="auth-link" id="openTgLink" hidden>باز کردن در تلگرام</a>
+    <div class="auth-status" id="authStatus">در حال ورود…</div>
+  </div>
+</div>
+
 <div class="page">
 
   <!-- TG HEADER -->
   <div class="tg-header">
-    <div class="tg-avatar">🎡</div>
+    <div class="tg-avatar" id="tgAvatar">🎡</div>
     <div class="tg-hinfo">
-      <div class="tg-hname">گردونه شانس</div>
-      <div class="tg-hsub">حق انتخاب داری؟</div>
+      <div class="tg-hname" id="tgName">گردونه شانس</div>
+      <div class="tg-hsub" id="tgSub">حق انتخاب داری؟</div>
     </div>
     <div class="gem-counter" id="gemCounter">
       <span>💎</span><span id="gemDisplay">0</span>
@@ -830,8 +864,9 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
         <div class="gem-wallet-count"><span>💎</span><span id="walletCount">0</span></div>
       </div>
       <div class="ref-code-lbl">کد دعوت شما</div>
+      <div class="gem-wallet-sub" id="inviteCount">دوستت با این لینک مستقیم وارد بازی می‌شود.</div>
       <div class="ref-code-row">
-        <div class="ref-code-box" id="myCode">SPIN-4X9K</div>
+        <div class="ref-code-box" id="myCode">—</div>
         <button class="ref-btn copy" onclick="copyCode()">📋 کپی</button>
         <button class="ref-btn share" onclick="shareSheet()">🔗 ارسال</button>
       </div>
@@ -880,6 +915,7 @@ canvas#sc{position:absolute;top:0;left:0;width:70px;height:140px;pointer-events:
   <div class="tm-row"><span class="tm-lbl">☀ حالت روشن</span><button class="tm-tog" id="tmTog" onclick="toggleTheme()"></button></div>
 </div>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 /* ════════════════════════════════
    PHYSICS CONFIG
@@ -894,6 +930,11 @@ const C = {
    GEM ECONOMY
 ════════════════════════════════ */
 let gems = 0;
+let sessionToken = '';
+let inviteUrl = '';
+let hintedRef = '';
+let authReady = false;
+let walletLock = false;
 
 function updateGemUI() {
   ['gemDisplay','walletCount','cardGems'].forEach(id => {
@@ -904,11 +945,40 @@ function updateGemUI() {
   gc.classList.remove('pulse'); void gc.offsetWidth; gc.classList.add('pulse');
 }
 
-function earnGems(n, msg) { gems += n; updateGemUI(); showToast(`+${n} 💎 ${msg}`); }
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(sessionToken ? { Authorization: 'Bearer ' + sessionToken } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
 
-function spendGems(n) {
-  if (gems < n) { showToast(`💎 کافی نیست — ${gems} موجود، ${n} نیاز داری`); return false; }
-  gems -= n; updateGemUI(); return true;
+async function spendGems(reason) {
+  if (walletLock) return false;
+  walletLock = true;
+  try {
+    const { res, data } = await api('/api/wallet/spend', { reason });
+    if (res.status === 409) {
+      if (typeof data.gems === 'number') { gems = data.gems; updateGemUI(); }
+      showToast(`💎 کافی نیست — ${typeof data.gems === 'number' ? data.gems : gems} موجود`);
+      return false;
+    }
+    if (!res.ok) { showToast('الماس ثبت نشد. دوباره امتحان کن.'); return false; }
+    gems = data.gems;
+    updateGemUI();
+    return true;
+  } catch (err) {
+    showToast('الماس ثبت نشد. دوباره امتحان کن.');
+    return false;
+  } finally {
+    walletLock = false;
+  }
 }
 
 /* ════════════════════════════════
@@ -1017,9 +1087,9 @@ drawWheel(0);
 /* ════════════════════════════════
    BOOST — elastic grow animation
 ════════════════════════════════ */
-function doBoost() {
-  if (boostUsed >= 3 || animBoost) return;
-  if (!spendGems(2)) return;
+async function doBoost() {
+  if (boostUsed >= 3 || animBoost || walletLock) return;
+  if (!(await spendGems('boost'))) return;
   boostUsed++; specialW += 0.35; targAngles = calcA(PRIZES, specialW);
   const rem = 3 - boostUsed;
   if (rem === 0) document.getElementById('btnBoost').classList.add('dis');
@@ -1042,10 +1112,11 @@ function doBoost() {
 /* ════════════════════════════════
    REMOVE EMPTY — animate to zero angle (no removal, avoids glitches)
 ════════════════════════════════ */
-function doRemoveEmpty() {
+async function doRemoveEmpty() {
   const emptyIdx = PRIZES.findIndex(p => p.empty && !p.zeroed);
   if (emptyIdx === -1) { showToast('کمان پوچ روی گردونه نیست!'); return; }
-  if (!spendGems(5)) return;
+  if (walletLock) return;
+  if (!(await spendGems('wheel-empty'))) return;
   document.getElementById('btnRmEmpty').classList.add('dis');
 
   const active = PRIZES.filter(p => !p.removed);
@@ -1597,7 +1668,7 @@ async function doCardRemove() {
   const gameId = cardRound.gameId;
   cardBusy = true;
   setCardControls();
-  if (!spendGems(1)) {
+  if (!(await spendGems('card-remove'))) {
     if (!sameRound(epoch, gameId)) return;
     cardBusy = false;
     setCardControls();
@@ -1698,21 +1769,41 @@ function handleOvClick(e, id) {
 /* ════════════════════════════════
    REFERRAL / SHARE
 ════════════════════════════════ */
+function inviteTarget() {
+  return inviteUrl || '';
+}
 function copyCode() {
-  const c = document.getElementById('myCode').textContent;
-  if (navigator.clipboard) navigator.clipboard.writeText(c);
-  showToast('کد دعوت کپی شد! 🔗');
-  if (Math.random() > .6) earnGems(3, 'دوست دعوت شد!');
+  const value = inviteTarget();
+  if (!value) { showToast('لینک دعوت هنوز آماده نیست.'); return; }
+  if (navigator.clipboard) navigator.clipboard.writeText(value);
+  showToast('لینک دعوت کپی شد');
 }
 function shareSheet() {
-  const c = document.getElementById('myCode').textContent;
-  const txt = `🎡 گردونه شانس رو امتحان کن! با کد ${c} یه اسپین رایگان دریافت کن!`;
-  if (navigator.share) navigator.share({ title: 'گردونه شانس', text: txt, url: 'https://spinwin.app' });
-  else { if (navigator.clipboard) navigator.clipboard.writeText(txt); showToast('لینک کپی شد! 🔗'); }
+  const value = inviteTarget();
+  if (!value) { showToast('لینک دعوت هنوز آماده نیست.'); return; }
+  const txt = '🎡 گردونه شانس را باز کن و با لینک من وارد شو.';
+  if (navigator.share) navigator.share({ title: 'گردونه شانس', text: txt, url: value });
+  else copyCode();
 }
-function shareTG()  { const c = document.getElementById('myCode').textContent; window.open(`https://t.me/share/url?url=https://spinwin.app&text=🎡 گردونه شانس! کد ${c}`, '_blank'); }
-function shareSMS() { const c = document.getElementById('myCode').textContent; window.open(`sms:?body=🎡 گردونه شانس رو امتحان کن! کد ${c} — https://spinwin.app`, '_blank'); }
-function shareTW()  { const c = document.getElementById('myCode').textContent; window.open(`https://twitter.com/intent/tweet?text=🎡 گردونه شانس! کد ${c}`, '_blank'); }
+function shareTG() {
+  const value = inviteTarget();
+  if (!value) { showToast('لینک دعوت هنوز آماده نیست.'); return; }
+  const text = '🎡 گردونه شانس را باز کن. با لینک من وارد شو.';
+  const url = `https://t.me/share/url?url=${encodeURIComponent(value)}&text=${encodeURIComponent(text)}`;
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else window.open(url, '_blank');
+}
+function shareSMS() {
+  const value = inviteTarget();
+  if (!value) { showToast('لینک دعوت هنوز آماده نیست.'); return; }
+  window.open(`sms:?body=${encodeURIComponent('🎡 گردونه شانس را باز کن: ' + value)}`, '_blank');
+}
+function shareTW() {
+  const value = inviteTarget();
+  if (!value) { showToast('لینک دعوت هنوز آماده نیست.'); return; }
+  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent('🎡 گردونه شانس ' + value)}`, '_blank');
+}
 
 /* RULES */
 function toggleRules() {
@@ -1775,6 +1866,107 @@ function launchConfetti() {
   }
   draw();
 }
+
+/* ════════════════════════════════
+   TELEGRAM LOGIN
+════════════════════════════════ */
+function applyProfile(data) {
+  authReady = true;
+  if (data.token) sessionToken = data.token;
+  gems = Number(data.gems) || 0;
+  updateGemUI();
+  inviteUrl = data.inviteUrl || '';
+  const code = document.getElementById('myCode');
+  if (code) code.textContent = data.referralCode || '—';
+  const count = document.getElementById('inviteCount');
+  if (count) count.textContent = `${data.invites || 0} دوست با لینک تو وارد شدند`;
+  const user = data.user || {};
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'کاربر تلگرام';
+  const nameEl = document.getElementById('tgName');
+  const subEl = document.getElementById('tgSub');
+  if (nameEl) nameEl.textContent = name;
+  if (subEl) subEl.textContent = user.username ? '@' + user.username : 'گردونه شانس';
+  const avatar = document.getElementById('tgAvatar');
+  if (avatar) {
+    avatar.textContent = '';
+    if (user.photoUrl && user.photoUrl.startsWith('https://')) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.src = user.photoUrl;
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = (user.firstName || 'ت').slice(0, 1);
+    }
+  }
+  document.getElementById('authGate').classList.add('hidden');
+}
+
+function authMessage(error) {
+  if (error === 'no_telegram') return 'ربات تلگرام هنوز روی سرور تنظیم نشده.';
+  if (error === 'invalid' || error === 'unauthorized') return 'ورود تلگرام تأیید نشد. بازی را ببند و دوباره از ربات باز کن.';
+  if (error === 'no_database') return 'دیتابیس در دسترس نیست.';
+  return 'ورود انجام نشد. اتصال را بررسی کن و دوباره باز کن.';
+}
+
+function startTelegramLogin() {
+  const ref = hintedRef ? `?ref=${encodeURIComponent(hintedRef)}` : '';
+  location.href = `/api/auth/start${ref}`;
+}
+
+async function bootAuth() {
+  const params = new URLSearchParams(location.search);
+  hintedRef = params.get('startapp') || params.get('tgWebAppStartParam') || params.get('ref') || '';
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.ready();
+    if (tg.expand) tg.expand();
+    try {
+      if (tg.setHeaderColor) tg.setHeaderColor('#17212b');
+      if (tg.setBackgroundColor) tg.setBackgroundColor('#0e1621');
+    } catch (err) {}
+  }
+  const status = document.getElementById('authStatus');
+  try {
+    let result;
+    if (tg && tg.initData) result = await api('/api/auth/miniapp', { initData: tg.initData });
+    else result = await api('/api/auth/me');
+    if (result.res.ok) {
+      applyProfile(result.data);
+      if (result.data.referralApplied || params.get('invited') === '1') {
+        showToast('دعوت ثبت شد. سه الماس برای دوستت کنار گذاشته شد.');
+      }
+      return;
+    }
+    if (tg && tg.initData) {
+      status.textContent = authMessage(result.data.error);
+      return;
+    }
+    const cfg = await api('/api/auth/config');
+    const authFlag = params.get('auth');
+    if (authFlag === 'error') status.textContent = 'ورود با تلگرام کامل نشد. دوباره امتحان کن.';
+    else if (authFlag === 'unconfigured') status.textContent = 'ورود OAuth هنوز در BotFather و سرور تنظیم نشده.';
+    else if (result.data.error === 'no_telegram' || result.data.error === 'no_database') status.textContent = authMessage(result.data.error);
+    else status.textContent = 'برای بازی و دعوت دوستان با تلگرام وارد شو.';
+    if (cfg.data.oauth) document.getElementById('loginBtn').hidden = false;
+    if (cfg.data.botUsername) {
+      const link = document.getElementById('openTgLink');
+      link.hidden = false;
+      link.href = `https://t.me/${cfg.data.botUsername}`;
+    }
+    if (!cfg.data.oauth && !cfg.data.botUsername && authFlag !== 'error') {
+      status.textContent = 'این بازی داخل تلگرام باز می‌شود. اتصال ربات هنوز کامل نشده.';
+    }
+  } catch (err) {
+    status.textContent = 'ورود انجام نشد. اتصال را بررسی کن و دوباره باز کن.';
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !authReady) return;
+  api('/api/auth/me').then(({ res, data }) => { if (res.ok) applyProfile(data); });
+});
+
+bootAuth();
 
 /* KEYBOARD */
 document.addEventListener('keydown', e => {
